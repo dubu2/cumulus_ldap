@@ -1,0 +1,35 @@
+# Configured by Ansible
+uid nslcd
+gid nslcd
+
+uri {{ ldap_uri }}
+
+base {{ ldap_base_dn }}
+
+base group {{ ldap_base_group }}
+
+binddn {{ ldap_bind_dn }}
+bindpw {{ ldap_bind_passwd }}
+
+tls_reqcert never
+tls_cacertfile {{ ldap_server_ssl_cert_location }}
+
+ssl off
+pagesize 2000
+referrals off
+idle_timelimit 1000
+timelimit 60
+ignorecase yes
+nss_nested_groups yes
+
+filter passwd (&(Objectclass=user)(!(objectClass=computer))(memberOf:1.2.840.113556.1.4.1941:={{ ldap_search_filter }}))
+map    passwd uid           sAMAccountName
+map    passwd uidNumber     objectSid:{{ ad_domain_sid }}
+map    passwd gidNumber     objectSid:{{ ad_domain_sid }}
+map    passwd homeDirectory "/home/$sAMAccountName"
+map    passwd gecos         displayName
+map    passwd loginShell    "/bin/bash"
+
+filter group (&(|(objectClass=group)(Objectclass=user))(!(objectClass=computer)))
+map    group gidNumber     objectSid:{{ ad_domain_sid }}
+map    group cn            sAMAccountName

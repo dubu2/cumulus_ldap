@@ -1,0 +1,216 @@
+---
+- name: Start mgmt VRF for Cumulus Linux 3.x
+  shell: |
+    net add vrf mgmt
+    net pending
+    net commit
+
+- name: Install debconf-utils (debconf-i18n)
+  apt:
+    name: debconf-i18n
+    state: present
+
+- name: Set nslcd debconf variables
+  debconf:
+    name: nslcd
+    question: "{{ item.key }}"
+    vtype: "{{ item.value.vtype }}"
+    value: "{{ item.value.value }}"
+  with_dict: "{{ nslcd }}"
+
+- name: Set man-db debconf variables
+  debconf:
+    name: man-db
+    question: "{{ item.key }}"
+    vtype: "{{ item.value.vtype }}"
+    value: "{{ item.value.value }}"
+  with_dict: "{{ man_db }}"
+
+- name: Set libnss-ldap debconf variables
+  debconf:
+    name: libnss-ldap
+    question: "{{ item.key }}"
+    vtype: "{{ item.value.vtype }}"
+    value: "{{ item.value.value }}"
+  with_dict: "{{ libnss_ldapd }}"
+
+# - name: Set debconf-utils nslcd selections
+#   debconf:
+#     name: nslcd
+#     question: "{{ item.key }}"
+#     vtype: "{{ item.type }}"
+#     value: "{{ item.value }}"
+#   with_items:
+#     - key: nslcd/ldap-binddn
+#       type: string
+#       value: "{{ ldap_bind_dn }}"
+#     - key: nslcd/ldap-bindpw
+#       type: password
+#       value: "{{ ldap_bind_password }}"
+#     - key: nslcd/ldap-uris
+#       type: string
+#       value: "{{ ldap_uri }}"
+#     - key: nslcd/ldap-base
+#       type: string
+#       value: "ou=support,dc=rtp,dc=example,dc=test"
+#     - key: libraries/restart-without-asking
+#       type: boolean
+#       value: true
+#     - key: nslcd/ldap-auth-type
+#       type: select
+#       value: simple
+#     - key: nslcd/ldap-starttls
+#       type: boolean
+#       value: true
+#     - key: nslcd/ldap-reqcert
+#       type: select
+#       value: never
+#     - key: nslcd/ldap-cacertfile
+#       type: string
+#       value: "/etc/ssl/certs/ca-certificates.crt"
+
+- name: Set debconf-utils libpam-runtime selections
+  debconf:
+    name: libpam-runtime
+    question: "{{ item.key }}"
+    vtype: "{{ item.type }}"
+    value: "{{ item.value }}"
+  with_items:
+    - key: libpam-runtime/profiles
+      type: multiselect
+      value: "ccreds-save, unix, ldap, mkhomedir, ccreds-check"
+
+# - name: Set debconf-utils man-db selections
+#   debconf:
+#     name: man-db
+#     question: "{{ item.key }}"
+#     vtype: "{{ item.type }}"
+#     value: "{{ item.value }}"
+#   with_items:
+#     - key: man-db/auto-update
+#       type: boolean
+#       value: true
+
+# - name: Set debconf-utils libnss-ldapd selections
+#   debconf:
+#     name: libnss-ldapd
+#     question: "{{ item.key }}"
+#     vtype: "{{ item.type }}"
+#     value: "{{ item.value }}"
+#   with_items:
+#     - key: libnss-ldapd/nsswitch
+#       type: multiselect
+#       value: "group, passwd, shadow"
+#     - key: libnss-ldapd/clean_nsswitch
+#       type: boolean
+#       value: false
+
+- name: Set debconf-utils libnss-ldapd:amd64 selections
+  debconf:
+    name: libnss-ldapd:amd64
+    question: "{{ item.key }}"
+    vtype: "{{ item.type }}"
+    value: "{{ item.value }}"
+  with_items:
+    - key: libnss-ldapd/nsswitch
+      type: multiselect
+      value: "group, passwd, shadow"
+    - key: libnss-ldapd/clean_nsswitch
+      type: boolean
+      value: false
+
+- name: Install LDAP packages with APT
+  apt:
+    pkg:
+    - libnss-ldapd
+    - libpam-ldap
+    - ldap-utils
+    - nslcd
+    state: latest
+    update_cache: yes
+
+- name: disable service nslcd and ensure it is masked so it cannot be started
+  systemd:
+    name: nslcd
+    enabled: no
+    state: stopped
+    masked: yes
+
+
+
+#- name: Install nslcd
+#  apt:
+#    name: nslcd
+#    state: present
+#    update_cache: yes
+
+## This next module can most likely be removed, as the one after it will do both (create file and insert block of text)
+#- name: Ansible create a new file that will make the home directory of new AD users with permissions set
+#  file:
+#    path: /usr/share/pam-configs/mkhomedir
+#    state: touch
+#    mode: 0644
+#    owner: root
+
+- name: Insert/Update configuration contents for mkhomedir file
+  blockinfile:
+    dest: /usr/share/pam-configs/mkhomedir
+    create: yes
+    owner: root
+    group: root
+    mode: 0644
+    marker: "## {mark} added by Ansible (Example Corp. - IT Infrastructure)"
+    block: |
+      Name: Create home directory during login
+      Default: yes
+      Priority: 900
+      Session-Type: Additional
+      Session:
+              Required pam_mkhomedir.so  umask=0022  skel=/etc/skel
+
+        .bash_history   .bashrc         .inputrc        .viminfo
+        .bash_logout    hfe-root-ca.pem .profile        .vimrc
+
+        .bash_history   .bashrc         .inputrc        .viminfo    
+        .bash_logout    hfe-root-ca.pem .profile        .vimrc
+
+- name: Update PAM configuration
+  command: >
+    pam-auth-update
+    --enable pam-param mkhomedir ldap
+    --force
+  when: ansible_os_family == 'Debian'
+
+- name: Add the line 'nslcd' to the file if the line does not exist
+  lineinfile:
+    path: /etc/vrf/systemd.conf
+    line: nslcd
+    create: yes
+
+# - name: Reload the daemons to populate nslcd@mgmt in the /etc/systemd/system/ directory thus making the service available for vrf deployment
+#   systemd:
+#     daemon-reload: yes
+
+- name: Start/Restart the nslcd@mgmt service and issue daemon-reload
+  systemd:
+    daemon-reload: yes
+    name: nslcd@mgmt
+    enabled: yes
+    state: restarted
+
+- name: Copy AD Server public cert to public cert location
+  copy: 
+    src: hfe-root-ca.pem  
+    dest: /etc/ssl/certs/ca-certificates.crt 
+    mode: 444
+  notify:
+    - restart nslcd@mgmt
+      #   - restart nscd
+
+- name: Create nslcd.conf file from Jinja2 template and restart associated services
+  template: 
+    src: nslcd.conf.j2 
+    dest: /etc/nslcd.conf
+  notify:
+    - restart nslcd@mgmt
+      #   - restart nscd

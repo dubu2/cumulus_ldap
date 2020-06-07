@@ -1,0 +1,10 @@
+# The variables below are production for EXAMPLE.COM - LDAPS via DUO Proxy
+
+ldap_uri: "ldaps://mfa-prox1.example.local"
+ldap_base_dn: "DC=example,DC=local"
+ldap_base_group: "ou=Security Groups,dc=example,dc=local"
+ldap_bind_dn: "CN=Cumulus LDAP user,OU=Service Accounts,DC=example,DC=local"
+ldap_bind_password: "LQygVf8jaZXRu8SNQjMJEsSLHHH"
+ldap_server_ssl_cert_location: "/etc/ssl/certs/ca-certificates.crt"
+ldap_search_filter: "cn=Cumulus Linux Admins,ou=Linux Groups,ou=Security Groups,dc=example,dc=local"
+ad_domain_sid: "objectSid:S-1-5-21-1444561220-108942820-123456789"
